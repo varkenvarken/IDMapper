@@ -187,7 +187,6 @@ class IDMapper(bpy.types.Operator):
         size=4,
         default=Vector((0, 0, 0, 1)),
     )
-
     number_of_ids: BoolProperty(
         name="Number of ids",
         description="Limit the number of distinct vertex colors assigned",
@@ -1412,12 +1411,14 @@ paint_helptext = [
 blf.size(0, 10)
 
 top = 100 + 12 * len(paint_helptext)
-ph1 = [ht.split("\t")[0] for ht in paint_helptext]
-w1, _ = blf.dimensions(0, max(ph1, key=len))
-ph2 = [ht.split("\t")[1] for ht in paint_helptext]
-w2, _ = blf.dimensions(0, max(ph2, key=len))
-ph3 = [ht.split("\t")[2] for ht in paint_helptext]
-w3, _ = blf.dimensions(0, max(ph3, key=len))
+_parts = [ht.split("\t") for ht in paint_helptext]
+_parts = [(p + ["", "", ""])[:3] for p in _parts]
+ph1 = [p[0] for p in _parts]
+w1, _ = blf.dimensions(0, max(ph1, key=len) if ph1 else "")
+ph2 = [p[1] for p in _parts]
+w2, _ = blf.dimensions(0, max(ph2, key=len) if ph2 else "")
+ph3 = [p[2] for p in _parts]
+w3, _ = blf.dimensions(0, max(ph3, key=len) if ph3 else "")
 left3 = w3 + 10
 left2 = w2 + 4 + left3
 left1 = w1 + 8 + left2
