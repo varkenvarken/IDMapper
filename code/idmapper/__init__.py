@@ -22,7 +22,7 @@
 bl_info = {
     "name": "IDMapper",
     "author": "Michel Anders (varkenvarken)",
-    "version": (0, 0, 20250816102007),
+    "version": (0, 0, 20250902164500),
     "blender": (4, 4, 0),
     "location": "View3D > Vertex Paint > Paint",
     "description": "Create an idmap as a vertex color layer, grouping related faces by color",
@@ -187,6 +187,18 @@ class IDMapper(bpy.types.Operator):
         size=4,
         default=Vector((0, 0, 0, 1)),
     )
+    number_of_ids: BoolProperty(
+        name="Number of ids",
+        description="Limit the number of distinct vertex colors assigned",
+        default=False,
+    )
+    colors: IntProperty(
+        name="Colors",
+        description="Maximum number of distinct vertex colors to use",
+        default=8,
+        min=1,
+        max=256,
+    )
 
     method: EnumProperty(
         items=[
@@ -203,8 +215,8 @@ class IDMapper(bpy.types.Operator):
         default="HEURISTIC",
     )
 
-    # materialid		: BoolProperty			(name="By Material id",		description="Calculate id map based on assigned materials (disabled when no materials present on mesh)", default=False)
-    # facemapid		: BoolProperty			(name="By Face map",		description="Calculate id map based on face map membership", default=False)
+    # materialid        : BoolProperty          (name="By Material id",     description="Calculate id map based on assigned materials (disabled when no materials present on mesh)", default=False)
+    # facemapid     : BoolProperty          (name="By Face map",        description="Calculate id map based on face map membership", default=False)
     selectmaterial: BoolProperty(
         name="Only material id",
         description="Calculate id map only for faces with a material id (disabled when no materials present on mesh)",
@@ -290,6 +302,22 @@ class IDMapper(bpy.types.Operator):
             indexed_colors[-1] = list(
                 self.basecolor[:]
             )  # but the default color for non selected faces is defined by the user
+            # Optional: reduce number of distinct output colors
+            if self.number_of_ids:
+                ncolors = max(1, int(self.colors))
+                # limit by available non-default weights
+                ncolors = min(ncolors, len([w for w in set(weightmap.values()) if w != -1]))
+                try:
+                    palette = color_set(ncolors)
+                except Exception:
+                    palette = np.ones((ncolors, 4), dtype=np.float32)
+                    for i in range(ncolors):
+                        h = i / max(1, ncolors)
+                        palette[i, :3] = [h, 1.0 - h, (0.5 + h) % 1.0]
+                remap_keys = sorted([w for w in indexed_colors.keys() if w != -1])
+                for i, w in enumerate(remap_keys):
+                    c = palette[i % ncolors]
+                    indexed_colors[w][:3] = [float(c[0]), float(c[1]), float(c[2])]
         # facemaps are currently unsupported in 4.0, see https://projects.blender.org/blender/blender/issues/105317
         # elif self.method == "FACEMAPID":
         #     fm = bm.faces.layers.face_map.verify()
@@ -510,6 +538,22 @@ class IDMapper(bpy.types.Operator):
             indexed_colors[-1] = list(
                 self.basecolor[:]
             )  # but the default color for non selected faces is defined by the user
+            # Optional: reduce number of distinct output colors
+            if self.number_of_ids:
+                ncolors = max(1, int(self.colors))
+                # limit by available non-default weights
+                ncolors = min(ncolors, len([w for w in set(weightmap.values()) if w != -1]))
+                try:
+                    palette = color_set(ncolors)
+                except Exception:
+                    palette = np.ones((ncolors, 4), dtype=np.float32)
+                    for i in range(ncolors):
+                        h = i / max(1, ncolors)
+                        palette[i, :3] = [h, 1.0 - h, (0.5 + h) % 1.0]
+                remap_keys = sorted([w for w in indexed_colors.keys() if w != -1], key=lambda x: str(x))
+                for i, w in enumerate(remap_keys):
+                    c = palette[i % ncolors]
+                    indexed_colors[w][:3] = [float(c[0]), float(c[1]), float(c[2])]
 
         for f, weight in weightmap.items():
             color = indexed_colors[weight]
@@ -585,6 +629,10 @@ class IDMapper(bpy.types.Operator):
         row.prop(self, "selected")
         if self.selected or self.method == "MATERIALID":
             row.prop(self, "basecolor")
+        row = layout.row()
+        row.prop(self, "number_of_ids")
+        if self.number_of_ids:
+            row.prop(self, "colors", slider=True)
 
         if self.method in {"HEURISTIC", "FACEMAPID"} or self.usedisplaycolor:
             layout.prop(self, "seed")
@@ -1344,31 +1392,33 @@ def color_set(n):
 
 # each line MUST have two tabs
 paint_helptext = [
-    "Left	mouse	paint",
-    "	S	pick color",
-    "	K	fill region",
-    "Alt	K	fill same colored regions",
-    "	W	smooth (ctrl respects seams)",
-    "Alt	W	restricted smooth (ctrl respects seams)",
-    "	P	paint selected faces",
-    "	F	resize cursor (+mousewheel)",
-    "Num	+	expand region (ctrl respects seams)",
-    "Num	-	shrink region (ctrl respects seams)",
-    "Num	/	flatten face colors",
-    "Ctl	Z	undo",
-    "Ctl	1-9	select from color list",
-    "Ctl	0	roll color list up",
+    "Left   mouse   paint",
+    "   S   pick color",
+    "   K   fill region",
+    "Alt    K   fill same colored regions",
+    "   W   smooth (ctrl respects seams)",
+    "Alt    W   restricted smooth (ctrl respects seams)",
+    "   P   paint selected faces",
+    "   F   resize cursor (+mousewheel)",
+    "Num    +   expand region (ctrl respects seams)",
+    "Num    -   shrink region (ctrl respects seams)",
+    "Num    /   flatten face colors",
+    "Ctl    Z   undo",
+    "Ctl    1-9 select from color list",
+    "Ctl    0   roll color list up",
 ]
 
 blf.size(0, 10)
 
 top = 10 + 12 * len(paint_helptext)
-ph1 = [ht.split("\t")[0] for ht in paint_helptext]
-w1, _ = blf.dimensions(0, max(ph1, key=len))
-ph2 = [ht.split("\t")[1] for ht in paint_helptext]
-w2, _ = blf.dimensions(0, max(ph2, key=len))
-ph3 = [ht.split("\t")[2] for ht in paint_helptext]
-w3, _ = blf.dimensions(0, max(ph3, key=len))
+_parts = [ht.split("\t") for ht in paint_helptext]
+_parts = [(p + ["", "", ""])[:3] for p in _parts]
+ph1 = [p[0] for p in _parts]
+w1, _ = blf.dimensions(0, max(ph1, key=len) if ph1 else "")
+ph2 = [p[1] for p in _parts]
+w2, _ = blf.dimensions(0, max(ph2, key=len) if ph2 else "")
+ph3 = [p[2] for p in _parts]
+w3, _ = blf.dimensions(0, max(ph3, key=len) if ph3 else "")
 left3 = w3 + 10
 left2 = w2 + 4 + left3
 left1 = w1 + 8 + left2
@@ -2147,11 +2197,11 @@ def tri(put, v0, v1, v2):
 
 def draw_tris_np(pixels, size, color, tris, step):
     """
-    pixels	a size x size x channels  int32 ndarray
-    size	size of the image
-    color	N x length int32 ndarray (either length 3 or 4)
-    tris	a N x 3 x 2 float python list of lists of lists
-    step	a function thats is called with argument (1) every 100 triangles
+    pixels  a size x size x channels  int32 ndarray
+    size    size of the image
+    color   N x length int32 ndarray (either length 3 or 4)
+    tris    a N x 3 x 2 float python list of lists of lists
+    step    a function thats is called with argument (1) every 100 triangles
     """
 
     XY = np.array([size - 1, size - 1], dtype=np.int32)
