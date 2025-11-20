@@ -22,8 +22,8 @@
 bl_info = {
     "name": "IDMapper",
     "author": "Michel Anders (varkenvarken)",
-    "version": (0, 0, 20250902164500),
-    "blender": (4, 4, 0),
+    "version": (0, 0, 20251120102514),
+    "blender": (5, 0, 0),
     "location": "View3D > Vertex Paint > Paint",
     "description": "Create an idmap as a vertex color layer, grouping related faces by color",
     "warning": "",
@@ -968,7 +968,7 @@ def set_color(bm, bvh, context, event, color, restrict, restriction_color):
     rv3d = context.region_data
     coord = event.mouse_region_x, event.mouse_region_y
     radius = (
-        context.tool_settings.unified_paint_settings.size
+        context.tool_settings.vertex_paint.brush.size  
     )  # context.tool_settings.vertex_paint.brush.size
     radius *= radius
 
@@ -1444,7 +1444,7 @@ def cursor_handler(self, context, shortcut):
     width = gpu.state.line_width_get()
     gpu.state.line_width_set(1)
     r = (
-        context.tool_settings.unified_paint_settings.size
+        context.tool_settings.vertex_paint.brush.size
     )  # context.tool_settings.vertex_paint.brush.size
 
     if (
@@ -1721,20 +1721,20 @@ class VertexColorFacePaint(bpy.types.Operator):
                         self.original_color,
                     )
                 elif event.type == "WHEELUPMOUSE":
-                    context.tool_settings.unified_paint_settings.size += 1
+                    context.tool_settings.vertex_paint.brush.size += 1
                 elif event.type == "WHEELDOWNMOUSE":
-                    if context.tool_settings.unified_paint_settings.size > 1:
-                        context.tool_settings.unified_paint_settings.size -= 1
+                    if context.tool_settings.vertex_paint.brush.size > 1:
+                        context.tool_settings.vertex_paint.brush.size -= 1
 
             elif self.mode == "CURSORRESIZE":  # Mouse was pressed
                 if event.type == "F" and event.value == "RELEASE":
                     self.mode = None
                     self._set_cursor(context, self.mode)
                 elif event.type == "WHEELUPMOUSE":
-                    context.tool_settings.unified_paint_settings.size += 1
+                    context.tool_settings.vertex_paint.brush.size += 1
                 elif event.type == "WHEELDOWNMOUSE":
-                    if context.tool_settings.unified_paint_settings.size > 1:
-                        context.tool_settings.unified_paint_settings.size -= 1
+                    if context.tool_settings.vertex_paint.brush.size > 1:
+                        context.tool_settings.vertex_paint.brush.size -= 1
         except:
             self.bm.free()
             self._set_cursor(context, None)

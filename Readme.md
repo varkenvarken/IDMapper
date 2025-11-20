@@ -17,7 +17,9 @@ which is convenient when useing the vertex colors as id-maps.
 
 ## TLDR; 
 
-- works on Blender 4.4 (and likely on 4.5 but not tested)
+- works on Blender 5.0
+ 
+- the older release [20250816090946](https://github.com/varkenvarken/IDMapper/releases/tag/20250816090946) works on Blender 4.4 (and likely on 4.5 but not tested)
 
 - full documentation in the [docs folder](/docs/)
 
