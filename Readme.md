@@ -19,13 +19,13 @@ which is convenient when useing the vertex colors as id-maps.
 
 - works on Blender 5.0
  
+- latest installable add-on in [releases](https://github.com/varkenvarken/IDMapper/releases)
+
 - the older release [20250816090946](https://github.com/varkenvarken/IDMapper/releases/tag/20250816090946) works on Blender 4.4 (and likely on 4.5 but not tested)
 
-- full documentation in the [docs folder](/docs/)
+- full documentation in the [docs folder](/docs/) or [online](https://varkenvarken.github.io/IDMapper/)
 
-- latest installable add-on in releases
-
-There is a short tutorial video on YouTube: https://www.youtube.com/watch?v=NV4K4ZFeFKI
+There is also a short tutorial video on YouTube: https://www.youtube.com/watch?v=NV4K4ZFeFKI
 
 Enjoy!
 
