@@ -1,7 +1,7 @@
 # ##### BEGIN GPL LICENSE BLOCK #####
 #
 #  idmapper.py , a Blender addon to create an idmap as a vertex color layer.
-#  (c) 2016 - 2025 Michel J. Anders (varkenvarken)
+#  (c) 2016 - 2026 Michel J. Anders (varkenvarken)
 #
 #  This program is free software; you can redistribute it and/or
 #  modify it under the terms of the GNU General Public License
@@ -22,8 +22,8 @@
 bl_info = {
     "name": "IDMapper",
     "author": "Michel Anders (varkenvarken)",
-    "version": (0, 0, 20251120102514),
-    "blender": (5, 0, 0),
+    "version": (0, 0, 20261117134100),
+    "blender": (5, 3, 0),
     "location": "View3D > Vertex Paint > Paint",
     "description": "Create an idmap as a vertex color layer, grouping related faces by color",
     "warning": "",
@@ -2235,6 +2235,11 @@ class VertexColorToImageMap(bpy.types.Operator):
         description="Only bake facemap colors for faces that are selected",
         default=False,
     )
+    all_obs: BoolProperty(
+        name="All objects",
+        description="bake combined map for all objects",
+        default=True,
+    )
 
     @classmethod
     def poll(self, context):
@@ -2256,103 +2261,118 @@ class VertexColorToImageMap(bpy.types.Operator):
         layout.prop(self, "materialid")
         layout.prop(self, "selected")
         layout.prop(self, "size")
+        layout.prop(self, "all_obs")
 
     def execute(self, context):
         bpy.ops.object.mode_set(mode="OBJECT")
 
-        scene = context.scene
-        self.ob = context.active_object
-        mesh = context.object.data
+        obs = []
+        if self.all_obs:
+            for ob in context.selected_objects:
+                obs.append(ob)
+        else:
+            obs.append(context.active_object)
 
-        # select the active uv layer or create one if it dows not exist yet
-        if mesh.uv_layers.active is None:
-            bpy.ops.mesh.uv_texture_add()
-            # unwrap the mesh
-            bpy.ops.object.mode_set(mode="EDIT")
-            bpy.ops.mesh.select_all(
-                action="SELECT"
-            )  # make sure all verts are selected to get a complete map
-            bpy.ops.uv.smart_project(island_margin=0.03)
-            bpy.ops.object.mode_set(mode="OBJECT")
-            mesh = context.object.data
-        uv = mesh.uv_layers.active.data
-
-        # select the active vertex color layer or create one if it does not exist yet
-        if mesh.color_attributes.active_color_index < 0:
-            bpy.ops.geometry.color_attribute_add(
-                domain="CORNER", data_type="BYTE_COLOR"
-            )
-        vertex_colors = mesh.color_attributes[
-            mesh.color_attributes.active_color_index
-        ].data
-
+        # create an in memory image
         size = int(self.size)
-        img = bpy.data.images.new(name="IDmap " + mesh.name, width=size, height=size)
+        img = bpy.data.images.new(name="IDmap", width=size, height=size)
         img.use_fake_user = True
 
-        start = time()
-        # draw polygons onto image
+        # we work on an ndarray for speed
         pixels = np.asarray(img.pixels, dtype=np.float32)
         channels = img.channels
         tris = []
         colors = []
-        # TODO? materialid AND selected
-        if self.materialid:
-            matid = self.ob.active_material_index
-            for p in mesh.polygons:
-                if p.material_index == matid:
-                    polygon = []
-                    color = vertex_colors[p.loop_start].color
-                    for loop in p.loop_indices:
-                        polygon.append(uv[loop].uv)  # uv is 2-vector
-                    for tri in tessellate([polygon]):
-                        tris.append((polygon[tri[0]], polygon[tri[1]], polygon[tri[2]]))
-                        colors.append(color[:3])
-        elif self.selected:
-            for p in mesh.polygons:
-                if p.select:
-                    polygon = []
-                    color = vertex_colors[p.loop_start].color
-                    for loop in p.loop_indices:
-                        polygon.append(uv[loop].uv)  # uv is 2-vector
-                    for tri in tessellate([polygon]):
-                        tris.append((polygon[tri[0]], polygon[tri[1]], polygon[tri[2]]))
-                        colors.append(color[:3])
-        else:
-            for p in mesh.polygons:
-                polygon = []
-                color = vertex_colors[p.loop_start].color
-                for loop in p.loop_indices:
-                    polygon.append(uv[loop].uv)  # uv is 2-vector
-                for tri in tessellate([polygon]):
-                    tris.append((polygon[tri[0]], polygon[tri[1]], polygon[tri[2]]))
-                    colors.append(color[:3])
 
-        pixels.shape = size, size, channels
-        vcolors = np.ones((len(colors), 4), dtype=np.float32)
-        vcolors[:, :3] = colors
-        with ProgressCM(wm=context.window_manager, steps=len(tris) // 100) as progress:
-            draw_tris_np(pixels, size, vcolors, tris, progress.step)
-        if self.bleed:
-            black = np.array([0, 0, 0, 1], dtype=np.float32)
-            ct = pixels[1:-1, 1:-1]
-            up = pixels[1:-1, 0:-2]
-            dn = pixels[1:-1, 2:]
-            lf = pixels[0:-2, 1:-1]
-            ri = pixels[2:, 1:-1]
-            ctb = np.all(ct == black, axis=-1)
-            edge = np.logical_and(ctb, np.logical_not(np.all(up == black, axis=-1)))
-            edge = np.dstack((edge, edge, edge, edge))
-            np.putmask(ct, edge, up)
-            edge = np.logical_and(ctb, np.logical_not(np.all(dn == black, axis=-1)))
-            edge = np.dstack((edge, edge, edge, edge))
-            np.putmask(ct, edge, dn)
-            edge = np.logical_and(ctb, np.logical_not(np.all(lf == black, axis=-1)))
-            edge = np.dstack((edge, edge, edge, edge))
-            np.putmask(ct, edge, lf)
-            edge = np.logical_and(ctb, np.logical_not(np.all(ri == black, axis=-1)))
-            edge = np.dstack((edge, edge, edge, edge))
-            np.putmask(ct, edge, ri)
+        start = time()
+
+        for ob in obs:
+            if not isinstance(ob.data, bpy.types.Mesh): continue
+
+            mesh = ob.data
+
+            # select the active uv layer or create one if it does not exist yet
+            if mesh.uv_layers.active is None:
+                bpy.ops.mesh.uv_texture_add()
+                # unwrap the mesh
+                bpy.ops.object.mode_set(mode="EDIT")
+                bpy.ops.mesh.select_all(
+                    action="SELECT"
+                )  # make sure all verts are selected to get a complete map
+                bpy.ops.uv.smart_project(island_margin=0.03)
+                bpy.ops.object.mode_set(mode="OBJECT")
+                mesh = context.object.data
+            uv = mesh.uv_layers.active.data
+
+            # select the active vertex color layer or create one if it does not exist yet
+            if mesh.color_attributes.active_color_index < 0:
+                bpy.ops.geometry.color_attribute_add(
+                    domain="CORNER", data_type="BYTE_COLOR"
+                )
+            vertex_colors = mesh.color_attributes[
+                mesh.color_attributes.active_color_index
+            ].data
+
+            # draw polygons onto image
+            # TODO? materialid AND selected
+            if self.materialid:
+                matid = self.ob.active_material_index
+                for p in mesh.polygons:
+                    if p.material_index == matid:
+                        polygon = []
+                        color = vertex_colors[p.loop_start].color
+                        for loop in p.loop_indices:
+                            polygon.append(uv[loop].uv)  # uv is 2-vector
+                        for tri in tessellate([polygon]):
+                            tris.append((polygon[tri[0]], polygon[tri[1]], polygon[tri[2]]))
+                            colors.append(color[:3])
+            elif self.selected:
+                for p in mesh.polygons:
+                    if p.select:
+                        polygon = []
+                        color = vertex_colors[p.loop_start].color
+                        for loop in p.loop_indices:
+                            polygon.append(uv[loop].uv)  # uv is 2-vector
+                        for tri in tessellate([polygon]):
+                            tris.append((polygon[tri[0]], polygon[tri[1]], polygon[tri[2]]))
+                            colors.append(color[:3])
+            else:
+                for p in mesh.polygons:
+                    polygon = []
+                    color = vertex_colors[p.loop_start].color
+                    for loop in p.loop_indices:
+                        polygon.append(uv[loop].uv)  # uv is 2-vector
+                    for tri in tessellate([polygon]):
+                        tris.append((polygon[tri[0]], polygon[tri[1]], polygon[tri[2]]))
+                        colors.append(color[:3])
+
+            pixels.shape = size, size, channels
+            vcolors = np.ones((len(colors), 4), dtype=np.float32)
+            vcolors[:, :3] = colors
+            with ProgressCM(wm=context.window_manager, steps=len(tris) // 100) as progress:
+                draw_tris_np(pixels, size, vcolors, tris, progress.step)
+            if self.bleed:
+                black = np.array([0, 0, 0, 1], dtype=np.float32)
+                ct = pixels[1:-1, 1:-1]
+                up = pixels[1:-1, 0:-2]
+                dn = pixels[1:-1, 2:]
+                lf = pixels[0:-2, 1:-1]
+                ri = pixels[2:, 1:-1]
+                ctb = np.all(ct == black, axis=-1)
+                edge = np.logical_and(ctb, np.logical_not(np.all(up == black, axis=-1)))
+                edge = np.dstack((edge, edge, edge, edge))
+                np.putmask(ct, edge, up)
+                edge = np.logical_and(ctb, np.logical_not(np.all(dn == black, axis=-1)))
+                edge = np.dstack((edge, edge, edge, edge))
+                np.putmask(ct, edge, dn)
+                edge = np.logical_and(ctb, np.logical_not(np.all(lf == black, axis=-1)))
+                edge = np.dstack((edge, edge, edge, edge))
+                np.putmask(ct, edge, lf)
+                edge = np.logical_and(ctb, np.logical_not(np.all(ri == black, axis=-1)))
+                edge = np.dstack((edge, edge, edge, edge))
+                np.putmask(ct, edge, ri)
+
+        # flatten the array to copy it to the image
         pixels.shape = -1
         img.pixels[:] = pixels
         self.report(
