@@ -22,7 +22,7 @@
 bl_info = {
     "name": "IDMapper",
     "author": "Michel Anders (varkenvarken)",
-    "version": (0, 0, 20261117134100),
+    "version": (0, 0, 20261119162200),
     "blender": (5, 3, 0),
     "location": "View3D > Vertex Paint > Paint",
     "description": "Create an idmap as a vertex color layer, grouping related faces by color",
